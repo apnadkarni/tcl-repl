@@ -156,7 +156,15 @@ proc repl::complete_method {oo obj prefix {ip {}} {ns ::}} {
     set matches {}
     switch -exact $oo {
         ensemble {
-            TBD
+            # TBD - method may not appear directly after ensemble command
+            # in two cases:
+            #   - when -params is configured
+            #   - nested ensemble
+            # Perhaps in this case "obj" should be treated as a command prefix
+            # consisting of one or more words.
+            if {[evaluate $ip $ns ::namespace ensemble exists $obj]} {
+                set matches [_ensemble_methods $esc_prefix $obj $ip $ns]
+            }
         }
         oo {
             if {![evaluate $ip $ns ::info object isa object $obj]} {
@@ -209,6 +217,29 @@ proc repl::_return_matches {prefix matches} {
     } else {
         return [list $prefix {}]
     }
+}
+
+# Collect ensemble methods (subcommands)
+proc repl::_ensemble_methods {esc_prefix cmd {ip {}} {ns ::}} {
+    set methods [evaluate $ip $ns ::namespace ensemble configure $cmd -subcommands]
+    if {[llength $methods] == 0} {
+        # Subcommands either defined through the map option or all exported
+        # commands.
+        set map [evaluate $ip $ns ::namespace ensemble configure $cmd -map]
+        if {[dict size $map] == 0} {
+            # No map defined. Get exported commands from namespace
+            set ens_ns [evaluate $ip $ns ::namespace ensemble configure $cmd -namespace]
+            set methods [evaluate $ip $ens_ns ::namespace export]
+        } else {
+            set methods [dict keys $map]
+        }
+    }
+
+    # esc_prefix is expected to be glob-escaped
+    return [lmap meth $methods {
+        if {![string match ${esc_prefix}* $meth]} continue
+        set meth
+    }]
 }
 
 # Helper to evaluate commands in the target interpreter namespace
